@@ -10,6 +10,23 @@ const settingsSection = document.getElementById('settings-section');
 const userContextInput = document.getElementById('user-context');
 const todoToggle = document.getElementById('todo-toggle');
 
+// ----------------------
+// 1) DEFAULT TODO = ON
+//    and remember choice
+// ----------------------
+document.addEventListener('DOMContentLoaded', () => {
+    const saved = localStorage.getItem('lb_scan_todos');
+    if (saved === null) {
+        // First visit: default to ON
+        todoToggle.checked = true;
+    } else {
+        todoToggle.checked = (saved === 'true');
+    }
+    todoToggle.addEventListener('change', () => {
+        localStorage.setItem('lb_scan_todos', String(todoToggle.checked));
+    });
+});
+
 // This script expects GEMINI_API_KEY to be defined in config.js
 if (typeof GEMINI_API_KEY === 'undefined') {
     displayError("API Key not found. Please make sure config.js is loaded and contains your GEMINI_API_KEY.");
@@ -159,6 +176,33 @@ function getIcon(type) {
             </svg>`;
 }
 
+// --------------
+// Markdown utils
+// --------------
+function renderMarkdown(mdText) {
+    // Configure marked + hljs
+    marked.setOptions({
+        gfm: true,
+        breaks: false,
+        headerIds: true,
+        mangle: false,
+        highlight(code, lang) {
+            try {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+            } catch {}
+            try {
+                return hljs.highlightAuto(code).value;
+            } catch {}
+            return code;
+        }
+    });
+    const raw = marked.parse(mdText || '');
+    const safe = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });
+    return `<div class="markdown-body">${safe}</div>`;
+}
+
 function displayIssues(repoUrl, issues) {
     // Add a title
     const repoName = new URL(repoUrl).pathname.substring(1);
@@ -179,15 +223,13 @@ function displayIssues(repoUrl, issues) {
         }
         const tagsHtml = issue.tags.map(tag => `<span class="text-xs font-medium mr-2 px-2.5 py-1 rounded-full ${getTagColor(tag)}">${tag}</span>`).join('');
 
-        // Construct the GitHub issue URL
+        // Construct the GitHub issue URL (use original markdown as body)
         const issueTitle = encodeURIComponent(issue.title);
         const issueBody = encodeURIComponent(issue.description);
         const newIssueUrl = `https://github.com/${repoName}/issues/new?title=${issueTitle}&body=${issueBody}`;
         
-        // Super simple markdown to HTML for display
-        const descriptionHtml = issue.description
-            .replace(/### (.*)/g, '<h4 class="text-md font-semibold text-slate-800 mt-4 mb-2">$1</h4>')
-            .replace(/\n/g, '<br>');
+        // ✅ Pretty, safe markdown rendering
+        const descriptionHtml = renderMarkdown(issue.description);
 
         const card = `
             <div class="bg-white rounded-lg shadow-md overflow-hidden transition-all hover:shadow-xl">
@@ -199,10 +241,10 @@ function displayIssues(repoUrl, issues) {
                             <div class="mt-2 mb-4">
                                 ${tagsHtml}
                             </div>
-                            <div class="text-slate-600 text-sm leading-relaxed">${descriptionHtml}</div>
+                            <div class="text-slate-700 text-sm leading-relaxed">${descriptionHtml}</div>
                         </div>
                     </div>
-                     <div class="mt-6 flex justify-end">
+                    <div class="mt-6 flex justify-end">
                         <a href="${newIssueUrl}" target="_blank" rel="noopener noreferrer" class="bg-slate-800 text-white font-semibold py-2 px-4 rounded-md hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors flex items-center space-x-2">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-4 h-4">
                               <path fill-rule="evenodd" d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0ZM1.5 8a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0Zm5-2.25a.75.75 0 0 1 .75.75v1.75h1.75a.75.75 0 0 1 0 1.5H7.25v1.75a.75.75 0 0 1-1.5 0V9.75H4a.75.75 0 0 1 0-1.5h1.75V6.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd"></path>
